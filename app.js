@@ -1,9 +1,11 @@
-const API_ROOT = "https://hacker-news.firebaseio.com/v0/item";
+const FIREBASE_API_ROOT = "https://hacker-news.firebaseio.com/v0/item";
+const ALGOLIA_API_ROOT = "https://hn.algolia.com/api/v1/items";
 const DEFAULT_ITEM_ID = "48537641";
 const MAX_COMMENTS = 280;
 const FETCH_CONCURRENCY = 10;
 
 const itemCache = new Map();
+const threadCache = new Map();
 let activeAbort = null;
 let currentThread = null;
 let currentView = "all";
@@ -140,7 +142,28 @@ async function loadThread(rawInput) {
   urlInput.value = toHnUrl(itemId);
   currentThread = null;
   renderLoading();
-  setStatus("Fetching the story...");
+  setStatus("Loading thread snapshot...");
+
+  try {
+    const thread = await fetchThreadViaAlgolia(itemId, signal);
+    if (signal.aborted) return;
+
+    currentThread = thread;
+    renderStory(thread.story);
+    renderMeta();
+    renderComments();
+    setStatus(
+      `Ready: ${formatCount(thread.loadedComments)}${thread.truncated ? "+" : ""} comments`,
+      "ready"
+    );
+  } catch (snapshotError) {
+    if (snapshotError.name === "AbortError") return;
+    await loadThreadViaFirebase(itemId, signal);
+  }
+}
+
+async function loadThreadViaFirebase(itemId, signal) {
+  setStatus("Snapshot unavailable. Reading live HN tree...");
 
   try {
     const story = await fetchItem(itemId, signal);
@@ -202,7 +225,7 @@ async function fetchItem(itemId, signal) {
   const key = String(itemId);
   if (itemCache.has(key)) return itemCache.get(key);
 
-  const request = fetch(`${API_ROOT}/${key}.json`, { signal })
+  const request = fetch(`${FIREBASE_API_ROOT}/${key}.json`, { signal })
     .then((response) => {
       if (!response.ok) {
         throw new Error(`Hacker News returned ${response.status} for item ${key}.`);
@@ -222,6 +245,106 @@ async function fetchItem(itemId, signal) {
 
   itemCache.set(key, request);
   return request;
+}
+
+async function fetchThreadViaAlgolia(itemId, signal) {
+  const key = String(itemId);
+  if (threadCache.has(key)) return threadCache.get(key);
+
+  const snapshotRequest = fetch(`${ALGOLIA_API_ROOT}/${key}`, { signal })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HN snapshot returned ${response.status} for item ${key}.`);
+      }
+      return response.json();
+    });
+  const liveStoryRequest = fetchItem(key, signal).catch((error) => {
+    if (error.name === "AbortError") throw error;
+    return null;
+  });
+
+  const request = Promise.all([snapshotRequest, liveStoryRequest])
+    .then(([item, liveStory]) => {
+      if (!item || !item.id) {
+        throw new Error(`HN snapshot item ${key} was not found.`);
+      }
+
+      const totalComments = countAlgoliaNodes(item.children || []);
+      const state = { count: 0, truncated: false };
+      const comments = sortByKnownOrder(
+        normalizeAlgoliaComments(item.children || [], 0, state),
+        liveStory?.kids || []
+      );
+
+      return {
+        story: {
+          id: Number(liveStory?.id || item.id),
+          by: liveStory?.by || item.author || "unknown",
+          descendants: liveStory?.descendants ?? totalComments,
+          score: liveStory?.score ?? item.points ?? 0,
+          time: liveStory?.time || item.created_at_i || toUnixSeconds(item.created_at),
+          title: liveStory?.title || item.title || "Untitled Hacker News item",
+          type: liveStory?.type || item.type || "story",
+          url: liveStory?.url || item.url || "",
+          text: liveStory?.text || item.text || ""
+        },
+        comments,
+        loadedComments: state.count,
+        truncated: state.truncated,
+        source: "snapshot"
+      };
+    })
+    .catch((error) => {
+      threadCache.delete(key);
+      throw error;
+    });
+
+  threadCache.set(key, request);
+  return request;
+}
+
+function sortByKnownOrder(nodes, orderedIds) {
+  if (!orderedIds.length) return nodes;
+
+  const order = new Map(orderedIds.map((id, index) => [Number(id), index]));
+  return [...nodes].sort((first, second) => {
+    const firstOrder = order.get(first.id) ?? Number.MAX_SAFE_INTEGER;
+    const secondOrder = order.get(second.id) ?? Number.MAX_SAFE_INTEGER;
+    return firstOrder - secondOrder;
+  });
+}
+
+function normalizeAlgoliaComments(items, depth, state) {
+  const nodes = [];
+
+  for (const item of items) {
+    if (state.count >= MAX_COMMENTS) {
+      state.truncated = true;
+      break;
+    }
+
+    if (!item || item.type !== "comment") continue;
+
+    state.count += 1;
+    const children = normalizeAlgoliaComments(item.children || [], depth + 1, state);
+    nodes.push({
+      id: Number(item.id),
+      by: item.author || "unknown",
+      time: item.created_at_i || toUnixSeconds(item.created_at),
+      text: item.text || "",
+      depth,
+      children
+    });
+  }
+
+  return nodes;
+}
+
+function countAlgoliaNodes(items) {
+  return items.reduce((total, item) => {
+    if (!item || item.type !== "comment") return total;
+    return total + 1 + countAlgoliaNodes(item.children || []);
+  }, 0);
 }
 
 async function loadComments(ids, depth, state, signal) {
@@ -667,6 +790,11 @@ function getDomain(url) {
 
 function formatDate(timestampSeconds) {
   return dateFormatter.format(new Date(timestampSeconds * 1000));
+}
+
+function toUnixSeconds(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isNaN(parsed) ? 0 : Math.round(parsed / 1000);
 }
 
 function relativeTime(timestampSeconds) {
