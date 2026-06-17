@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="description" content="A calmer, high-readability Hacker News thread reader.">
+    <title>HN Lens</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070a0f'/%3E%3Cpath d='M16 18h8v28h-8zM40 18h8v28h-8zM24 29h16v6H24z' fill='%238ee8ff'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="./styles.css">
+    <script>
+      (function () {
+        var saved = localStorage.getItem("readable-hn-theme");
+        var theme = saved || "dark";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#comments-title">Skip to comments</a>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="HN Lens home">
+          <span class="brand-mark" aria-hidden="true">H</span>
+          <span>HN Lens</span>
+        </a>
+
+        <form class="url-form" id="reader-form">
+          <label class="sr-only" for="hn-url">Hacker News URL</label>
+          <input
+            id="hn-url"
+            name="url"
+            type="text"
+            inputmode="url"
+            autocomplete="url"
+            spellcheck="false"
+            value="https://news.ycombinator.com/item?id=48537641"
+            placeholder="https://news.ycombinator.com/item?id=48537641"
+          >
+          <button class="primary-button" type="submit">
+            <span>Read</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 12h13"></path>
+              <path d="m13 6 6 6-6 6"></path>
+            </svg>
+          </button>
+        </form>
+
+        <div class="toolbar" aria-label="Display controls">
+          <button class="icon-button" id="focus-button" type="button" title="Enter focus mode" aria-label="Enter focus mode" aria-pressed="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
+              <path d="M16 3h3a2 2 0 0 1 2 2v3"></path>
+              <path d="M8 21H5a2 2 0 0 1-2-2v-3"></path>
+              <path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>
+              <path d="M12 8v8"></path>
+              <path d="M8 12h8"></path>
+            </svg>
+          </button>
+          <button class="icon-button" id="theme-toggle" type="button" title="Switch theme" aria-label="Switch theme">
+            <svg class="theme-sun" aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2"></path>
+              <path d="M12 20v2"></path>
+              <path d="m4.93 4.93 1.41 1.41"></path>
+              <path d="m17.66 17.66 1.41 1.41"></path>
+              <path d="M2 12h2"></path>
+              <path d="M20 12h2"></path>
+              <path d="m6.34 17.66-1.41 1.41"></path>
+              <path d="m19.07 4.93-1.41 1.41"></path>
+            </svg>
+            <svg class="theme-moon" aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M20.2 14.4A7.7 7.7 0 0 1 9.6 3.8 8.7 8.7 0 1 0 20.2 14.4Z"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="reader-layout">
+        <section class="story-surface" aria-labelledby="story-title">
+          <div class="status-line" id="status-line" role="status">Loading the sample thread...</div>
+          <article class="story" id="story"></article>
+        </section>
+
+        <aside class="reader-rail" aria-label="Thread controls">
+          <section class="rail-section">
+            <h2>Signal</h2>
+            <dl class="meta-list" id="meta-list"></dl>
+          </section>
+
+          <section class="rail-section">
+            <h2>Flow</h2>
+            <div class="segmented-control" id="comment-view" role="group" aria-label="Comment view">
+              <button type="button" data-view="all" aria-pressed="true">All</button>
+              <button type="button" data-view="top" aria-pressed="false">Top</button>
+            </div>
+
+            <label class="switch-row">
+              <span>Focus</span>
+              <input type="checkbox" id="focus-toggle">
+            </label>
+
+            <label class="switch-row">
+              <span>Compact</span>
+              <input type="checkbox" id="density-toggle">
+            </label>
+          </section>
+        </aside>
+
+        <section class="comments-surface" aria-labelledby="comments-title">
+          <div class="comments-heading">
+            <h2 id="comments-title">Conversation</h2>
+            <p id="comment-summary"></p>
+          </div>
+          <div class="comments" id="comments"></div>
+        </section>
+      </main>
+    </div>
+
+    <noscript>
+      <p class="noscript">Readable HN needs JavaScript to fetch Hacker News threads.</p>
+    </noscript>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
